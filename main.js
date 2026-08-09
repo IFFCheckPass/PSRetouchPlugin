@@ -1,12 +1,13 @@
 /**
- * Auto Retouch — Photoshop 2024/2025 UXP Plugin (v3 - evalScript 版)
- * 能识别、面板正常显示，但执行时 evalScript 不存在会报错
+ * Auto Retouch — Photoshop 2024/2025 UXP Plugin (v4 - batchPlay 版)
+ * JSX 内嵌 + plugin-data 临时文件 + AdobeScriptAutomation Scripts
  */
 
-const { action: psAction } = require("photoshop");
+const fs = require("uxp").storage.localFileSystem;
+const { action, core } = require("photoshop");
 
 // ──────────────────────────────────────────────────────────────
-// ExtendScript Core (embedded as string)
+// ExtendScript Core (embedded as string — 保持不变)
 // ──────────────────────────────────────────────────────────────
 const JSX_CORE = `
 "use strict";
@@ -221,151 +222,162 @@ function autoBackgroundBlur(strength, feather) {
 `;
 
 // ──────────────────────────────────────────────────────────────
-// evalScript 调用 v3 版本
+// ✅ batchPlay 执行引擎（v4 核心改动）
+// 写临时文件 → createSessionToken → AdobeScriptAutomation Scripts
 // ──────────────────────────────────────────────────────────────
-let coreLoaded = false;
+async function runJSX(scriptContent) {
+    const dataFolder = await fs.getDataFolder();
+    const runFile = await dataFolder.createFile("_retouch_run.jsx", { overwrite: true });
+    await runFile.write(scriptContent);
 
-async function ensureCore() {
-    if (coreLoaded) return;
-    await psAction.evalScript(JSX_CORE);
-    coreLoaded = true;
+    const token = await fs.createSessionToken(runFile);
+
+    const result = await core.executeAsModal(
+        async () => {
+            return await action.batchPlay(
+                [{
+                    "_obj": "AdobeScriptAutomation Scripts",
+                    "javaScript": { "_kind": "local", "_path": token },
+                    "_options": { "dialogOptions": "dontDisplay" }
+                }],
+                { synchronousExecution: false }
+            );
+        },
+        { commandName: "Auto Retouch" }
+    );
+
+    if (result && result.length > 0 && result[0].javaScriptMessage) {
+        return String(result[0].javaScriptMessage);
+    }
+    return "";
 }
 
-async function runFn(name, args) {
-    await ensureCore();
+async function runFn(fnName, args) {
     const argStr = args.map((a) => {
         if (typeof a === "boolean") return a ? "true" : "false";
         if (typeof a === "number") return String(a);
         return '"' + String(a).replace(/"/g, '\\"') + '"';
     }).join(",");
-    const script = name + "(" + argStr + ")";
-    return await psAction.evalScript(script);
+    const callScript = fnName + "(" + argStr + ")";
+    return await runJSX(JSX_CORE + "\n" + callScript);
 }
 
 // ──────────────────────────────────────────────────────────────
-// UI 绑定
+// UI 绑定（DOMContentLoaded 后再绑定，防时序问题）
 // ──────────────────────────────────────────────────────────────
-const els = {
-    skinStrength: document.getElementById("skinStrength"),
-    skinStrengthVal: document.getElementById("skinStrengthVal"),
-    skinDetail: document.getElementById("skinDetail"),
-    skinDetailVal: document.getElementById("skinDetailVal"),
-    skinFaceOnly: document.getElementById("skinFaceOnly"),
-    btnSkin: document.getElementById("btnSkin"),
+document.addEventListener("DOMContentLoaded", () => {
+    const els = {
+        skinStrength: document.getElementById("skinStrength"),
+        skinStrengthVal: document.getElementById("skinStrengthVal"),
+        skinDetail: document.getElementById("skinDetail"),
+        skinDetailVal: document.getElementById("skinDetailVal"),
+        skinFaceOnly: document.getElementById("skinFaceOnly"),
+        btnSkin: document.getElementById("btnSkin"),
 
-    blurStrength: document.getElementById("blurStrength"),
-    blurStrengthVal: document.getElementById("blurStrengthVal"),
-    blurFeather: document.getElementById("blurFeather"),
-    blurFeatherVal: document.getElementById("blurFeatherVal"),
-    btnBlur: document.getElementById("btnBlur"),
+        blurStrength: document.getElementById("blurStrength"),
+        blurStrengthVal: document.getElementById("blurStrengthVal"),
+        blurFeather: document.getElementById("blurFeather"),
+        blurFeatherVal: document.getElementById("blurFeatherVal"),
+        btnBlur: document.getElementById("btnBlur"),
 
-    quickSkin: document.getElementById("quickSkin"),
-    quickBlur: document.getElementById("quickBlur"),
-    btnQuick: document.getElementById("btnQuick"),
+        quickSkin: document.getElementById("quickSkin"),
+        quickBlur: document.getElementById("quickBlur"),
+        btnQuick: document.getElementById("btnQuick"),
 
-    statusBar: document.getElementById("statusBar"),
-    statusText: document.getElementById("statusText"),
-};
+        statusBar: document.getElementById("statusBar"),
+        statusText: document.getElementById("statusText"),
+    };
 
-function setStatus(text, type) {
-    els.statusText.textContent = text;
-    els.statusBar.classList.remove("working", "error");
-    if (type === "working") els.statusBar.classList.add("working");
-    if (type === "error") els.statusBar.classList.add("error");
-}
-
-function setButtonsEnabled(enabled) {
-    els.btnSkin.disabled = !enabled;
-    els.btnBlur.disabled = !enabled;
-    els.btnQuick.disabled = !enabled;
-}
-
-function bindSlider(el, valEl) {
-    el.addEventListener("input", () => {
-        valEl.textContent = el.value;
-    });
-}
-
-bindSlider(els.skinStrength, els.skinStrengthVal);
-bindSlider(els.skinDetail, els.skinDetailVal);
-bindSlider(els.blurStrength, els.blurStrengthVal);
-bindSlider(els.blurFeather, els.blurFeatherVal);
-
-// ──────────────────────────────────────────────────────────────
-// 按钮事件
-// ──────────────────────────────────────────────────────────────
-els.btnSkin.addEventListener("click", async () => {
-    setButtonsEnabled(false);
-    setStatus("🧴 磨皮中...", "working");
-    try {
-        const r = await runFn("autoSkinRetouch", [
-            parseInt(els.skinStrength.value, 10),
-            parseInt(els.skinDetail.value, 10),
-            els.skinFaceOnly.checked,
-        ]);
-        const ok = r && r.indexOf("OK") >= 0;
-        setStatus(ok ? "✅ 磨皮完成" : "❌ " + (r || "未知错误"), ok ? null : "error");
-    } catch (e) {
-        setStatus("❌ " + e.message, "error");
+    function setStatus(text, type) {
+        els.statusText.textContent = text;
+        els.statusBar.classList.remove("working", "error");
+        if (type === "working") els.statusBar.classList.add("working");
+        if (type === "error") els.statusBar.classList.add("error");
     }
-    setButtonsEnabled(true);
-});
 
-els.btnBlur.addEventListener("click", async () => {
-    setButtonsEnabled(false);
-    setStatus("📷 虚化中...", "working");
-    try {
-        const r = await runFn("autoBackgroundBlur", [
-            parseInt(els.blurStrength.value, 10),
-            parseInt(els.blurFeather.value, 10),
-        ]);
-        const ok = r && r.indexOf("OK") >= 0;
-        setStatus(ok ? "✅ 背景虚化完成" : "❌ " + (r || "未知错误"), ok ? null : "error");
-    } catch (e) {
-        setStatus("❌ " + e.message, "error");
+    function setButtonsEnabled(enabled) {
+        els.btnSkin.disabled = !enabled;
+        els.btnBlur.disabled = !enabled;
+        els.btnQuick.disabled = !enabled;
     }
-    setButtonsEnabled(true);
-});
 
-els.btnQuick.addEventListener("click", async () => {
-    const doSkin = els.quickSkin.checked;
-    const doBlur = els.quickBlur.checked;
-    if (!doSkin && !doBlur) {
-        setStatus("⚠️ 请至少选一项", "error");
-        return;
+    function bindSlider(el, valEl) {
+        el.addEventListener("input", () => { valEl.textContent = el.value; });
     }
-    setButtonsEnabled(false);
-    try {
-        if (doSkin) {
-            setStatus("🧴 磨皮中...", "working");
+
+    bindSlider(els.skinStrength, els.skinStrengthVal);
+    bindSlider(els.skinDetail, els.skinDetailVal);
+    bindSlider(els.blurStrength, els.blurStrengthVal);
+    bindSlider(els.blurFeather, els.blurFeatherVal);
+
+    els.btnSkin.addEventListener("click", async () => {
+        setButtonsEnabled(false);
+        setStatus("🧴 磨皮中...", "working");
+        try {
             const r = await runFn("autoSkinRetouch", [
                 parseInt(els.skinStrength.value, 10),
                 parseInt(els.skinDetail.value, 10),
                 els.skinFaceOnly.checked,
             ]);
-            if (!(r && r.indexOf("OK") >= 0)) {
-                setStatus("❌ 磨皮失败: " + r, "error");
-                setButtonsEnabled(true);
-                return;
-            }
+            const ok = r && r.indexOf("OK") >= 0;
+            setStatus(ok ? "✅ 磨皮完成" : "❌ " + (r || "未知错误"), ok ? null : "error");
+        } catch (e) {
+            setStatus("❌ " + e.message, "error");
         }
-        if (doBlur) {
-            setStatus("📷 虚化中...", "working");
+        setButtonsEnabled(true);
+    });
+
+    els.btnBlur.addEventListener("click", async () => {
+        setButtonsEnabled(false);
+        setStatus("📷 虚化中...", "working");
+        try {
             const r = await runFn("autoBackgroundBlur", [
                 parseInt(els.blurStrength.value, 10),
                 parseInt(els.blurFeather.value, 10),
             ]);
-            if (!(r && r.indexOf("OK") >= 0)) {
-                setStatus("❌ 虚化失败: " + r, "error");
-                setButtonsEnabled(true);
-                return;
-            }
+            const ok = r && r.indexOf("OK") >= 0;
+            setStatus(ok ? "✅ 背景虚化完成" : "❌ " + (r || "未知错误"), ok ? null : "error");
+        } catch (e) {
+            setStatus("❌ " + e.message, "error");
         }
-        setStatus("✨ 全部完成", null);
-    } catch (e) {
-        setStatus("❌ " + e.message, "error");
-    }
-    setButtonsEnabled(true);
-});
+        setButtonsEnabled(true);
+    });
 
-setStatus("就绪", null);
+    els.btnQuick.addEventListener("click", async () => {
+        const doSkin = els.quickSkin.checked;
+        const doBlur = els.quickBlur.checked;
+        if (!doSkin && !doBlur) { setStatus("⚠️ 请至少选一项", "error"); return; }
+        setButtonsEnabled(false);
+        try {
+            if (doSkin) {
+                setStatus("🧴 磨皮中...", "working");
+                const r = await runFn("autoSkinRetouch", [
+                    parseInt(els.skinStrength.value, 10),
+                    parseInt(els.skinDetail.value, 10),
+                    els.skinFaceOnly.checked,
+                ]);
+                if (!(r && r.indexOf("OK") >= 0)) {
+                    setStatus("❌ 磨皮失败: " + r, "error");
+                    setButtonsEnabled(true); return;
+                }
+            }
+            if (doBlur) {
+                setStatus("📷 虚化中...", "working");
+                const r = await runFn("autoBackgroundBlur", [
+                    parseInt(els.blurStrength.value, 10),
+                    parseInt(els.blurFeather.value, 10),
+                ]);
+                if (!(r && r.indexOf("OK") >= 0)) {
+                    setStatus("❌ 虚化失败: " + r, "error");
+                    setButtonsEnabled(true); return;
+                }
+            }
+            setStatus("✨ 全部完成", null);
+        } catch (e) {
+            setStatus("❌ " + e.message, "error");
+        }
+        setButtonsEnabled(true);
+    });
+
+    setStatus("就绪", null);
+});
