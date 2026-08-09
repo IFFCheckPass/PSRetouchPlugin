@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Auto Retouch</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>✨ Auto Retouch</h1>
+            <p class="subtitle">双曲线磨皮 · 镜头散景虚化</p>
+        </header>
+
+        <section class="panel">
+            <div class="panel-header">
+                <span class="panel-icon">🧴</span>
+                <span>自动磨皮</span>
+            </div>
+            <div class="panel-body">
+                <div class="control">
+                    <label>磨皮强度</label>
+                    <div class="slider-row">
+                        <input type="range" id="skinStrength" min="1" max="20" value="6">
+                        <span class="value-display"><span id="skinStrengthVal">6</span>px</span>
+                    </div>
+                </div>
+                <div class="control">
+                    <label>细节保留</label>
+                    <div class="slider-row">
+                        <input type="range" id="skinDetail" min="0" max="100" value="70">
+                        <span class="value-display"><span id="skinDetailVal">70</span>%</span>
+                    </div>
+                </div>
+                <div class="control-row">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="skinFaceOnly" checked>
+                        <span>仅磨皮人脸区域</span>
+                    </label>
+                </div>
+                <button class="btn btn-primary" id="btnSkin">开始磨皮</button>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-header">
+                <span class="panel-icon">📷</span>
+                <span>背景虚化</span>
+            </div>
+            <div class="panel-body">
+                <div class="control">
+                    <label>虚化强度</label>
+                    <div class="slider-row">
+                        <input type="range" id="blurStrength" min="5" max="50" value="20">
+                        <span class="value-display"><span id="blurStrengthVal">20</span>px</span>
+                    </div>
+                </div>
+                <div class="control">
+                    <label>边缘羽化</label>
+                    <div class="slider-row">
+                        <input type="range" id="blurFeather" min="0" max="100" value="30">
+                        <span class="value-display"><span id="blurFeatherVal">30</span>px</span>
+                    </div>
+                </div>
+                <button class="btn btn-primary" id="btnBlur">背景虚化</button>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-header">
+                <span class="panel-icon">🚀</span>
+                <span>一键全能</span>
+            </div>
+            <div class="panel-body">
+                <div class="control-row">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="quickSkin" checked>
+                        <span>包含磨皮</span>
+                    </label>
+                </div>
+                <div class="control-row">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="quickBlur" checked>
+                        <span>包含背景虚化</span>
+                    </label>
+                </div>
+                <button class="btn btn-accent" id="btnQuick">⚡ 一键处理</button>
+            </div>
+        </section>
+
+        <div class="status-bar" id="statusBar">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">就绪</span>
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+</html>

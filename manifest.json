@@ -1,0 +1,37 @@
+{
+    "manifestVersion": 5,
+    "id": "com.retouch.auto",
+    "name": "Auto Retouch",
+    "version": "2.0.0",
+    "main": "index.html",
+    "host": {
+        "app": "PS",
+        "minVersion": "25.0.0",
+        "maxVersion": "99.9"
+    },
+    "entrypoints": [
+        {
+            "type": "panel",
+            "id": "retouchPanel",
+            "label": {
+                "default": "Auto Retouch"
+            },
+            "description": "双曲线磨皮 + 镜头散景背景虚化",
+            "minimumSize": {
+                "width": 340,
+                "height": 480
+            },
+            "maximumSize": {
+                "width": 500,
+                "height": 1200
+            },
+            "preferredFloatingSize": {
+                "width": 360,
+                "height": 580
+            }
+        }
+    ],
+    "requiredPermissions": {
+        "localFileSystem": "plugin"
+    }
+}
